@@ -1,4 +1,10 @@
-# tftp-arduino
+# TFTP-Arduino
 TFTP Server for Arduino
-The server was mount on a Arduino Uno with a Ethernet Interface.
+
+I used an **Arduino Uno** with an **Ethernet Interface**.
+
 Using a MicroSD for storage data.
+
+Arduino IDE Version **[1.6.6](https://www.arduino.cc/en/Main/Software)**
+
+:bowtie:
