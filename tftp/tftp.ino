@@ -33,6 +33,7 @@ int flagW = 0;
 bool itsOpen;
 int no_block = 0;
 int sendit = 0;
+int timeout = 0;
 void setup() {
   // start the Ethernet and UDP:
   Ethernet.begin(mac,ip);
@@ -52,6 +53,7 @@ void loop() {
     if ((byte)packetBuffer[1] == byte(1) ){
         if (flagR == 0) {
           nomArchivo = "";
+          timeout = 0;
         }
         Serial.println("RRQ");
         for(int i = 2; byte(packetBuffer[i]) != byte(0); i++){
@@ -86,12 +88,14 @@ void loop() {
           Udp.beginPacket(remote, Udp.remotePort());
           Udp.write(ErrorBuffer, TFTP_PACKET_MAX_SIZE);
           Udp.endPacket();
+          timeout++;
         }
 
     } else if ((byte)packetBuffer[1] == byte(2) ) {
         Serial.println("WRQ");
         if (flagW == 0) {
           nomArchivo = "";
+          timeout = 0;
         }
         for(int i = 2; byte(packetBuffer[i]) != byte(0); i++){
           nomArchivo += String(packetBuffer[i]);
@@ -114,7 +118,7 @@ void loop() {
         }
 
     } else if ((byte)packetBuffer[1] == byte(3) ) {
-        
+        timeout = 0;
         Udp.read(packetBuffer,TFTP_PACKET_MAX_SIZE);
         if (block(no_block, int(packetBuffer[2]), int(packetBuffer[3]))) {
           //if (byte(packetBuffer[3]) == byte(1)) {
@@ -133,11 +137,16 @@ void loop() {
           Udp.write(ReplyBuffer, TFTP_ACK_SIZE);
           Udp.endPacket();
           no_block++;
+        } else {
+          Udp.beginPacket(remote, Udp.remotePort());
+          Udp.write(ReplyBuffer, TFTP_ACK_SIZE);
+          Udp.endPacket();
         }
         
     } else if ((byte)packetBuffer[1] == byte(4) ) {
       //memset(packetBuffer, 0, TFTP_PACKET_MAX_SIZE);
-      if(itsOpen) {
+      if(itsOpen && block(no_block, int(packetBuffer[2]), int(packetBuffer[3]))) {
+        timeout = 0;
         packetBuffer[0] = byte(0);
         packetBuffer[1] = byte(3);
         if(no_block<256){
@@ -164,12 +173,30 @@ void loop() {
         Udp.beginPacket(remote, Udp.remotePort());
         Udp.write(packetBuffer, i);
         Udp.endPacket();
-      } 
+      } else if ( !block(no_block, int(packetBuffer[2]), int(packetBuffer[3])) ) {
+        Udp.beginPacket(remote, Udp.remotePort());
+        Udp.write(packetBuffer, TFTP_PACKET_MAX_SIZE);
+        Udp.endPacket();
+      } else if (timeout == 8000) {
+        error(0);
+        Udp.beginPacket(remote, Udp.remotePort());
+        Udp.write(ErrorBuffer, TFTP_PACKET_MAX_SIZE);
+        Udp.endPacket();
+      } else {
+        error(4);
+        Udp.beginPacket(remote, Udp.remotePort());
+        Udp.write(ErrorBuffer, TFTP_PACKET_MAX_SIZE);
+        Udp.endPacket();
+      }
       
       
     } else {
-        error(byte(0));
+        error(2);
+        Udp.beginPacket(remote, Udp.remotePort());
+        Udp.write(ErrorBuffer, TFTP_PACKET_MAX_SIZE);
+        Udp.endPacket();
     }
+    timeout++;
   }
 }
 
@@ -208,12 +235,12 @@ void error(int e) {
         ErrorBuffer[i] = message[i-4];
       }
     case 4:
-      message = "Disk full or allocation exceeded";
+      message = "Illegal TFTP operation";
       for (int i = 4; i < sizeof(message)+4; i++){
         ErrorBuffer[i] = message[i-4];
       }
     case 5:
-      message = "Illegal TFTP operation";
+      message = "Unknown transfer ID";
       for (int i = 4; i < sizeof(message)+4; i++){
         ErrorBuffer[i] = message[i-4];
       }
